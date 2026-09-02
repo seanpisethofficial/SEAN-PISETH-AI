@@ -1,0 +1,155 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum OnboardingState {
+  NEW_USER
+  LANGUAGE_REQUIRED
+  LANGUAGE_SELECTED
+  WELCOME
+  TERMS_REQUIRED
+  PRIVACY_REQUIRED
+  COMPLETE
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELED
+  EXPIRED
+  PAST_DUE
+  PENDING
+}
+
+model User {
+  id                  String            @id @default(cuid())
+  telegramUserId      BigInt            @unique
+  username            String?
+  firstName           String?
+  lastName            String?
+  languageCode        String?
+  onboardingState     OnboardingState   @default(NEW_USER)
+  onboardingComplete  Boolean           @default(false)
+  termsAcceptedAt     DateTime?
+  privacyAcceptedAt   DateTime?
+  termsVersion        String?
+  privacyVersion      String?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  lastSeenAt          DateTime?
+  conversations       Conversation[]
+  subscriptions       Subscription[]
+  usageRecords        UsageRecord[]
+  payments            Payment[]
+  auditLogs           AuditLog[]
+}
+
+model Plan {
+  id               String           @id @default(cuid())
+  code             String           @unique
+  name             String
+  priceCents        Int
+  currency          String           @default("USD")
+  dailyRequests    Int
+  monthlyRequests  Int
+  historyDays      Int
+  priority         Int
+  fileAccess       Boolean          @default(false)
+  createdAt        DateTime         @default(now())
+  subscriptions    Subscription[]
+}
+
+model Subscription {
+  id                String             @id @default(cuid())
+  userId            String
+  planId            String
+  status            SubscriptionStatus @default(PENDING)
+  externalId        String?
+  currentPeriodStart DateTime?
+  currentPeriodEnd   DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan              Plan               @relation(fields: [planId], references: [id])
+  @@index([userId, status])
+}
+
+model Payment {
+  id            String   @id @default(cuid())
+  userId        String
+  externalId    String   @unique
+  amountCents   Int
+  currency      String
+  status        String
+  provider      String
+  rawEventHash  String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Conversation {
+  id          String    @id @default(cuid())
+  userId      String
+  title       String?
+  mode        String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages    Message[]
+  @@index([userId, updatedAt])
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  role           String
+  content        String
+  provider       String?
+  model          String?
+  createdAt      DateTime     @default(now())
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  @@index([conversationId, createdAt])
+}
+
+model UsageRecord {
+  id            String   @id @default(cuid())
+  userId        String
+  provider      String
+  model         String
+  success       Boolean
+  inputTokens   Int      @default(0)
+  outputTokens  Int      @default(0)
+  totalTokens   Int      @default(0)
+  estimatedCost Float    @default(0)
+  latencyMs     Int      @default(0)
+  createdAt     DateTime @default(now())
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, createdAt])
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  actorUserId String
+  action      String
+  target      String
+  beforeState String?
+  afterState  String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  actor       User     @relation(fields: [actorUserId], references: [id], onDelete: Cascade)
+  @@index([actorUserId, createdAt])
+}
+
+model WebhookEvent {
+  id            String   @id @default(cuid())
+  provider      String
+  externalId    String   @unique
+  payloadHash   String
+  processedAt   DateTime?
+  createdAt     DateTime @default(now())
+}
